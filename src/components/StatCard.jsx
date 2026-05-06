@@ -13,12 +13,12 @@ export default function StatCard({ title, value, icon: Icon, tone = 'stone', hel
   const isNegative = typeof value === 'string' && value.trim().startsWith('-');
 
   return (
-    <article className="app-card p-4">
-      <div className="flex items-start justify-between gap-3">
+    <article className="app-card p-3 sm:p-4">
+      <div className="flex min-h-24 items-start justify-between gap-2 sm:gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-bold text-stone-500 dark:text-stone-400">{title}</p>
+          <p className="text-xs font-bold leading-5 text-stone-500 dark:text-stone-400 sm:text-sm">{title}</p>
           <p
-            className={`mt-2 break-words text-2xl font-black ${
+            className={`mt-2 break-words text-xl font-black leading-tight sm:text-2xl ${
               isNegative ? 'text-rose-600 dark:text-rose-400' : 'text-stone-950 dark:text-white'
             }`}
           >
@@ -26,8 +26,8 @@ export default function StatCard({ title, value, icon: Icon, tone = 'stone', hel
           </p>
         </div>
         {Icon && (
-          <div className={`rounded-lg p-2.5 ${toneClasses[tone] || toneClasses.stone}`}>
-            <Icon className="h-5 w-5" aria-hidden="true" />
+          <div className={`shrink-0 rounded-lg p-2 sm:p-2.5 ${toneClasses[tone] || toneClasses.stone}`}>
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
           </div>
         )}
       </div>
