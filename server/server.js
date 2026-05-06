@@ -69,6 +69,14 @@ app.use(
 
 app.use(express.json({ limit: '64kb' }));
 
+app.get('/api/ai/health', (_request, response) => {
+  response.json({
+    ok: true,
+    service: 'dajaj-ydbah-ai-backend',
+    model: AI_MODEL,
+  });
+});
+
 function jsonError(response, status, message, details = {}) {
   return response.status(status).json({
     error: message,

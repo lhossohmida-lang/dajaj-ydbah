@@ -1,4 +1,8 @@
 function getDefaultAIBackendUrl() {
+  if (import.meta.env.DEV) {
+    return '';
+  }
+
   if (typeof window === 'undefined') {
     return 'http://localhost:5000';
   }
@@ -15,8 +19,10 @@ function getDefaultAIBackendUrl() {
 const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || getDefaultAIBackendUrl();
 
 async function requestAI(path, options) {
+  const url = `${AI_BACKEND_URL}${path}`;
+
   try {
-    return await fetch(`${AI_BACKEND_URL}${path}`, options);
+    return await fetch(url, options);
   } catch {
     throw new Error('تعذر الاتصال بخادم الذكاء الاصطناعي المحلي. شغل Backend بالأمر: npm run server');
   }
