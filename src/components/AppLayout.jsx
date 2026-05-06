@@ -12,6 +12,7 @@ import {
   Sun,
   X,
 } from 'lucide-react';
+import InstallPwaButton from './InstallPwaButton.jsx';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useSettings } from '../hooks/useSettings.js';
 
@@ -63,9 +64,16 @@ export default function AppLayout() {
         }`}
       >
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-teal-700 dark:text-teal-400">نظام الإدارة</p>
-            <h1 className="mt-1 text-lg font-black">{settings.slaughterhouseName || 'إدارة مدبحة الدجاج'}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src="/icons/icon-192.png"
+              alt="لوغو مدبحة دجاج"
+              className="h-12 w-12 rounded-lg border border-amber-200 object-cover shadow-sm dark:border-stone-700"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-teal-700 dark:text-teal-400">نظام الإدارة</p>
+              <h1 className="mt-1 truncate text-lg font-black">{settings.slaughterhouseName || 'إدارة مدبحة الدجاج'}</h1>
+            </div>
           </div>
           <button
             type="button"
@@ -149,6 +157,7 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <InstallPwaButton />
     </div>
   );
 }
