@@ -11,9 +11,10 @@ const AI_MODEL = process.env.AI_MODEL || 'gemma4:e2b';
 const MESSAGE_LIMIT = 2000;
 const HISTORY_LIMIT = 10;
 const REQUEST_TIMEOUT_MS = 60000;
+const CONTEXT_LIMIT = 18000;
 
 const SYSTEM_PROMPT =
-  'أنت مساعد ذكي متخصص في إدارة مدبحة دجاج. وظيفتك مساعدة صاحب المدبحة في حساب الربح، الخسارة، المبيعات، تكلفة الدجاج الحي، تكلفة الذبح، العمال، الكهرباء، النقل، المخزون، الفواتير، الزبائن، وتقديم نصائح عملية لتحسين الربح. أجب بالعربية البسيطة أو الدارجة الجزائرية حسب لغة المستخدم. لا تخترع أرقامًا غير موجودة. إذا احتجت بيانات، اطلبها من المستخدم بوضوح. عندما تعطي حسابات، اشرح العملية خطوة بخطوة وباختصار. لا تقم بتعديل أو حذف بيانات التطبيق، فقط قدّم اقتراحات وتحليلات.';
+  'أنت مساعد ذكي متخصص في إدارة مدبحة دجاج. وظيفتك مساعدة صاحب المدبحة في حساب الربح، الخسارة، المبيعات، تكلفة الدجاج الحي، تكلفة الذبح، العمال، الكهرباء، النقل، المخزون، الفواتير، الزبائن، وتقديم نصائح عملية لتحسين الربح. ستستقبل أيضًا خريطة مختصرة عن صفحات التطبيق وبنية البيانات والحسابات، وملخصات آمنة عن العمليات والعمال والسلف. أجب بالعربية البسيطة أو الدارجة الجزائرية حسب لغة المستخدم. لا تخترع أرقامًا غير موجودة. إذا احتجت بيانات غير موجودة في السياق، قل بوضوح أنها غير متوفرة واطلبها. عندما تعطي حسابات، اشرح العملية خطوة بخطوة وباختصار. لا تقم بتعديل أو حذف بيانات التطبيق، فقط قدّم اقتراحات وتحليلات.';
 
 function splitOrigins(value) {
   return String(value || '')
@@ -117,7 +118,17 @@ async function getOllamaStatus() {
 }
 
 function sanitizeBusinessContext(context = {}) {
-  const allowedFields = [
+  const allowedTopLevelFields = [
+    'appKnowledge',
+    'settings',
+    'today',
+    'month',
+    'allTime',
+    'registeredWorkers',
+    'workersLedgerAllTime',
+    'workersLedgerToday',
+    'todayOperations',
+    'recentOperations',
     'todaySlaughtered',
     'totalWeightKg',
     'purchaseCost',
@@ -133,13 +144,26 @@ function sanitizeBusinessContext(context = {}) {
     'currency',
   ];
 
-  return allowedFields.reduce((summary, field) => {
+  const summary = allowedTopLevelFields.reduce((result, field) => {
     if (context[field] !== undefined && context[field] !== null && context[field] !== '') {
-      summary[field] = context[field];
+      result[field] = context[field];
     }
 
-    return summary;
+    return result;
   }, {});
+
+  const serialized = JSON.stringify(summary);
+
+  if (serialized.length <= CONTEXT_LIMIT) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    recentOperations: Array.isArray(summary.recentOperations) ? summary.recentOperations.slice(0, 10) : summary.recentOperations,
+    todayOperations: Array.isArray(summary.todayOperations) ? summary.todayOperations.slice(0, 15) : summary.todayOperations,
+    contextNotice: 'تم تقليص عدد العمليات المرسلة لتفادي إرسال بيانات كثيرة إلى الذكاء الاصطناعي.',
+  };
 }
 
 function sanitizeHistory(history = []) {
@@ -158,7 +182,8 @@ function sanitizeHistory(history = []) {
 
 function buildUserContent(message, businessContext) {
   return [
-    'هذه بيانات مختصرة من تطبيق إدارة مدبحة الدجاج. لا تعتبرها قاعدة بيانات كاملة، ولا تطلب تعديل البيانات.',
+    'هذه خريطة معرفة وبيانات مختصرة من تطبيق إدارة مدبحة الدجاج. لا تعتبرها قاعدة بيانات كاملة، ولا تطلب تعديل البيانات.',
+    'إذا سأل المستخدم عن عامل أو سلفة، استعمل workersLedgerAllTime و workersLedgerToday و todayOperations و recentOperations.',
     `ملخص البيانات المتاحة: ${JSON.stringify(businessContext, null, 2)}`,
     `سؤال المستخدم: ${message}`,
   ].join('\n\n');

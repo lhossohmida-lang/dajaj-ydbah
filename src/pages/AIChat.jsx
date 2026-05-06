@@ -4,6 +4,7 @@ import ErrorMessage from '../components/ErrorMessage.jsx';
 import LoadingScreen from '../components/LoadingScreen.jsx';
 import { useSettings } from '../hooks/useSettings.js';
 import { useSlaughters } from '../hooks/useSlaughters.js';
+import { useWorkers } from '../hooks/useWorkers.js';
 import { checkAIStatus, sendAIMessage } from '../services/aiService.js';
 import { aggregateSlaughters, toNumber } from '../utils/calculations.js';
 import { filterByPeriod } from '../utils/dateUtils.js';
@@ -16,12 +17,41 @@ const suggestions = [
   'ما هو أفضل سعر بيع للكيلوغرام؟',
   'أعطني نصائح لتقليل المصاريف',
   'كم بقي في المخزون؟',
+  'كم أخذ كل عامل من سلفة؟',
   'حلل لي الفواتير',
 ];
 
-function buildBusinessContext(todayRows, currency) {
-  const todayStats = aggregateSlaughters(todayRows);
-  const totals = todayRows.reduce(
+const appKnowledge = {
+  appName: 'إدارة مدبحة الدجاج',
+  language: 'العربية مع دعم الدارجة الجزائرية',
+  pages: [
+    'لوحة التحكم: إحصائيات اليوم والشهر',
+    'إضافة عملية ذبح: معلومات عامة ثم معلومات الدجاج ثم المصاريف',
+    'السجلات: بحث وفلترة وتفاصيل وتعديل وحذف وتصدير CSV',
+    'التقارير: يومي وأسبوعي وشهري مع رسوم بيانية',
+    'العمال: تسجيل العمال الدائمين وأجرهم الافتراضي',
+    'الإعدادات: اسم المدبحة والعملة والأسعار الافتراضية',
+    'الذكاء الاصطناعي: تحليل واقتراحات فقط بدون تعديل البيانات',
+  ],
+  firestoreCollections: [
+    'users/{userId}/slaughters/{slaughterId}',
+    'users/{userId}/workers/{workerId}',
+    'users/{userId}/settings/app',
+  ],
+  calculations: {
+    totalLiveWeight: 'عدد الدجاج × الوزن المتوسط حي',
+    purchaseCost: 'الوزن الحي الكلي × سعر شراء الكيلو حي',
+    netWeight: 'الوزن الحي الكلي × نسبة التصافي ÷ 100',
+    revenue: 'الوزن الصافي × سعر بيع الكيلو صافي',
+    extraExpenses: 'العمال + الكهرباء والماء + النقل + التغليف + التنظيف + الخسائر + أخرى',
+    totalExpenses: 'تكلفة الشراء + المصاريف الإضافية',
+    netProfit: 'المداخيل - إجمالي المصاريف',
+    profitMargin: 'الربح الصافي ÷ المداخيل × 100',
+  },
+};
+
+function summarizeExpenses(rows) {
+  return rows.reduce(
     (summary, row) => ({
       purchaseCost: summary.purchaseCost + toNumber(row.purchaseCost),
       laborCost: summary.laborCost + toNumber(row.laborCost),
@@ -42,21 +72,168 @@ function buildBusinessContext(todayRows, currency) {
       otherExpenses: 0,
     },
   );
+}
+
+function operationSummary(row) {
+  return {
+    date: row.date,
+    supplierName: row.supplierName,
+    chickenCount: row.chickenCount,
+    totalLiveWeight: row.totalLiveWeight,
+    netWeight: row.netWeight,
+    purchaseCost: row.purchaseCost,
+    revenue: row.revenue,
+    totalExpenses: row.totalExpenses,
+    netProfit: row.netProfit,
+    profitMargin: row.profitMargin,
+    laborCost: row.laborCost,
+    transportCost: row.transportCost,
+    electricityCost: row.waterElectricityCost,
+    workers: Array.isArray(row.workers)
+      ? row.workers.map((worker) => ({
+          name: worker.name,
+          salary: worker.salary,
+          advance: worker.advance || 0,
+          remainingSalary: worker.remainingSalary ?? toNumber(worker.salary) - toNumber(worker.advance),
+        }))
+      : [],
+  };
+}
+
+function buildWorkerLedger(rows, registeredWorkers = []) {
+  const ledger = new Map();
+
+  registeredWorkers.forEach((worker) => {
+    ledger.set(worker.id || worker.name, {
+      workerId: worker.id || '',
+      name: worker.name,
+      defaultSalary: worker.defaultSalary || 0,
+      totalSalary: 0,
+      totalAdvance: 0,
+      remainingSalary: 0,
+      operationCount: 0,
+      lastOperationDate: '',
+    });
+  });
+
+  rows.forEach((row) => {
+    if (!Array.isArray(row.workers)) {
+      return;
+    }
+
+    row.workers.forEach((worker) => {
+      const key = worker.workerId || worker.name;
+
+      if (!key) {
+        return;
+      }
+
+      const current =
+        ledger.get(key) ||
+        {
+          workerId: worker.workerId || '',
+          name: worker.name,
+          defaultSalary: 0,
+          totalSalary: 0,
+          totalAdvance: 0,
+          remainingSalary: 0,
+          operationCount: 0,
+          lastOperationDate: '',
+        };
+
+      current.name = current.name || worker.name;
+      current.totalSalary += toNumber(worker.salary);
+      current.totalAdvance += toNumber(worker.advance);
+      current.remainingSalary += toNumber(worker.salary) - toNumber(worker.advance);
+      current.operationCount += 1;
+      current.lastOperationDate = row.date || current.lastOperationDate;
+      ledger.set(key, current);
+    });
+  });
+
+  return Array.from(ledger.values()).map((worker) => ({
+    ...worker,
+    totalSalary: Math.round(worker.totalSalary * 100) / 100,
+    totalAdvance: Math.round(worker.totalAdvance * 100) / 100,
+    remainingSalary: Math.round(worker.remainingSalary * 100) / 100,
+  }));
+}
+
+function buildBusinessContext(allRows, registeredWorkers, settings) {
+  const todayRows = filterByPeriod(allRows, 'today');
+  const monthRows = filterByPeriod(allRows, 'month');
+  const todayStats = aggregateSlaughters(todayRows);
+  const monthStats = aggregateSlaughters(monthRows);
+  const allTimeStats = aggregateSlaughters(allRows);
+  const todayExpenses = summarizeExpenses(todayRows);
+  const monthExpenses = summarizeExpenses(monthRows);
 
   return {
+    appKnowledge,
+    settings: {
+      slaughterhouseName: settings.slaughterhouseName,
+      currency: settings.currency,
+      defaultYieldPercentage: settings.defaultYieldPercentage,
+      defaultNetKgSalePrice: settings.defaultNetKgSalePrice,
+      defaultLiveKgPurchasePrice: settings.defaultLiveKgPurchasePrice,
+    },
+    today: {
+      slaughteredChickenCount: todayStats.chickenCount,
+      totalWeightKg: todayStats.netWeight,
+      purchaseCost: todayExpenses.purchaseCost,
+      laborCost: todayExpenses.laborCost,
+      transportCost: todayExpenses.transportCost,
+      electricityCost: todayExpenses.electricityCost,
+      otherExpenses: todayExpenses.otherExpenses,
+      salesTotal: todayStats.revenue,
+      slaughterCount: todayStats.slaughterCount,
+      netProfit: todayStats.netProfit,
+      profitMargin: todayStats.profitMargin,
+    },
+    month: {
+      slaughteredChickenCount: monthStats.chickenCount,
+      totalWeightKg: monthStats.netWeight,
+      purchaseCost: monthExpenses.purchaseCost,
+      laborCost: monthExpenses.laborCost,
+      transportCost: monthExpenses.transportCost,
+      electricityCost: monthExpenses.electricityCost,
+      otherExpenses: monthExpenses.otherExpenses,
+      salesTotal: monthStats.revenue,
+      slaughterCount: monthStats.slaughterCount,
+      netProfit: monthStats.netProfit,
+      profitMargin: monthStats.profitMargin,
+    },
+    allTime: {
+      slaughteredChickenCount: allTimeStats.chickenCount,
+      totalWeightKg: allTimeStats.netWeight,
+      salesTotal: allTimeStats.revenue,
+      totalExpenses: allTimeStats.totalExpenses,
+      netProfit: allTimeStats.netProfit,
+      profitMargin: allTimeStats.profitMargin,
+      slaughterCount: allTimeStats.slaughterCount,
+    },
+    registeredWorkers: registeredWorkers.map((worker) => ({
+      name: worker.name,
+      defaultSalary: worker.defaultSalary || 0,
+      notes: worker.notes || '',
+    })),
+    workersLedgerAllTime: buildWorkerLedger(allRows, registeredWorkers),
+    workersLedgerToday: buildWorkerLedger(todayRows, registeredWorkers),
+    todayOperations: todayRows.slice(0, 30).map(operationSummary),
+    recentOperations: allRows.slice(0, 30).map(operationSummary),
     todaySlaughtered: todayStats.chickenCount,
     totalWeightKg: todayStats.netWeight,
-    purchaseCost: totals.purchaseCost,
-    laborCost: totals.laborCost,
-    transportCost: totals.transportCost,
-    electricityCost: totals.electricityCost,
-    otherExpenses: totals.otherExpenses,
+    purchaseCost: todayExpenses.purchaseCost,
+    laborCost: todayExpenses.laborCost,
+    transportCost: todayExpenses.transportCost,
+    electricityCost: todayExpenses.electricityCost,
+    otherExpenses: todayExpenses.otherExpenses,
     salesTotal: todayStats.revenue,
     remainingStockKg: null,
     slaughterCount: todayStats.slaughterCount,
     netProfit: todayStats.netProfit,
     profitMargin: todayStats.profitMargin,
-    currency,
+    currency: settings.currency,
   };
 }
 
@@ -90,6 +267,7 @@ function MessageBubble({ message }) {
 export default function AIChat() {
   const { settings } = useSettings();
   const { slaughters, loading } = useSlaughters();
+  const { workers, loading: workersLoading } = useWorkers();
   const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -103,8 +281,7 @@ export default function AIChat() {
   const [error, setError] = useState('');
   const bottomRef = useRef(null);
 
-  const todayRows = useMemo(() => filterByPeriod(slaughters, 'today'), [slaughters]);
-  const businessContext = useMemo(() => buildBusinessContext(todayRows, settings.currency), [todayRows, settings.currency]);
+  const businessContext = useMemo(() => buildBusinessContext(slaughters, workers, settings), [slaughters, workers, settings]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -196,7 +373,7 @@ export default function AIChat() {
     setError('');
   }
 
-  if (loading) {
+  if (loading || workersLoading) {
     return <LoadingScreen label="جاري تجهيز بيانات الذكاء الاصطناعي..." />;
   }
 
@@ -314,15 +491,16 @@ export default function AIChat() {
           <section className="app-card p-4">
             <h4 className="font-black">ملخص بيانات اليوم المرسلة</h4>
             <dl className="mt-3 grid gap-2 text-sm">
-              <SummaryItem label="عدد الدجاج" value={formatNumber(businessContext.todaySlaughtered, true)} />
-              <SummaryItem label="الوزن الصافي" value={formatKg(businessContext.totalWeightKg)} />
-              <SummaryItem label="المبيعات" value={formatCurrency(businessContext.salesTotal, settings.currency)} />
-              <SummaryItem label="تكلفة الشراء" value={formatCurrency(businessContext.purchaseCost, settings.currency)} />
-              <SummaryItem label="العمال" value={formatCurrency(businessContext.laborCost, settings.currency)} />
-              <SummaryItem label="النقل" value={formatCurrency(businessContext.transportCost, settings.currency)} />
-              <SummaryItem label="الكهرباء والماء" value={formatCurrency(businessContext.electricityCost, settings.currency)} />
-              <SummaryItem label="الربح الصافي" value={formatCurrency(businessContext.netProfit, settings.currency)} />
-              <SummaryItem label="هامش الربح" value={formatPercent(businessContext.profitMargin)} />
+              <SummaryItem label="عدد الدجاج" value={formatNumber(businessContext.today.slaughteredChickenCount, true)} />
+              <SummaryItem label="الوزن الصافي" value={formatKg(businessContext.today.totalWeightKg)} />
+              <SummaryItem label="المبيعات" value={formatCurrency(businessContext.today.salesTotal, settings.currency)} />
+              <SummaryItem label="تكلفة الشراء" value={formatCurrency(businessContext.today.purchaseCost, settings.currency)} />
+              <SummaryItem label="العمال" value={formatCurrency(businessContext.today.laborCost, settings.currency)} />
+              <SummaryItem label="النقل" value={formatCurrency(businessContext.today.transportCost, settings.currency)} />
+              <SummaryItem label="الكهرباء والماء" value={formatCurrency(businessContext.today.electricityCost, settings.currency)} />
+              <SummaryItem label="سلف العمال اليوم" value={formatCurrency(businessContext.workersLedgerToday.reduce((total, worker) => total + toNumber(worker.totalAdvance), 0), settings.currency)} />
+              <SummaryItem label="الربح الصافي" value={formatCurrency(businessContext.today.netProfit, settings.currency)} />
+              <SummaryItem label="هامش الربح" value={formatPercent(businessContext.today.profitMargin)} />
             </dl>
           </section>
         </aside>
