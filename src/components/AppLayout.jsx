@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   BarChart3,
+  Bot,
   ClipboardList,
   LayoutDashboard,
   LogOut,
@@ -19,6 +20,7 @@ import { useSettings } from '../hooks/useSettings.js';
 
 const navItems = [
   { to: '/', label: 'لوحة التحكم', icon: LayoutDashboard, end: true },
+  { to: '/ai', label: 'الذكاء الاصطناعي', icon: Bot },
   { to: '/slaughters/new', label: 'عملية جديدة', icon: PlusCircle },
   { to: '/records', label: 'السجلات', icon: ClipboardList },
   { to: '/reports', label: 'التقارير', icon: BarChart3 },
@@ -28,6 +30,7 @@ const navItems = [
 
 const pageTitles = {
   '/': 'لوحة التحكم',
+  '/ai': 'الذكاء الاصطناعي',
   '/slaughters/new': 'إضافة عملية ذبح',
   '/records': 'سجلات العمليات',
   '/reports': 'التقارير',
