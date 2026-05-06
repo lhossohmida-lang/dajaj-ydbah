@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dajaj-ydbah-v3';
+const CACHE_NAME = 'dajaj-ydbah-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -35,6 +35,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    event.respondWith(fetch(event.request));
     return;
   }
 
