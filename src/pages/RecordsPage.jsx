@@ -15,8 +15,11 @@ function buildCsvRows(rows) {
   return rows.map((row) => ({
     التاريخ: row.date,
     المورد: row.supplierName,
-    العمال: Array.isArray(row.workers) ? row.workers.map((worker) => `${worker.name}: ${worker.salary}`).join(' | ') : '',
+    العمال: Array.isArray(row.workers)
+      ? row.workers.map((worker) => `${worker.name}: أجر ${worker.salary} / سلفة ${worker.advance || 0} / متبقي ${worker.remainingSalary ?? Number(worker.salary || 0) - Number(worker.advance || 0)}`).join(' | ')
+      : '',
     'أجور العمال': row.laborCost,
+    'عمال غير مسجلين': row.unregisteredLaborCost || 0,
     'عدد الدجاج': row.chickenCount,
     'الوزن الحي الكلي': row.totalLiveWeight,
     'الوزن الصافي': row.netWeight,

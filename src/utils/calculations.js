@@ -5,6 +5,7 @@ export const numericSlaughterFields = [
   'yieldPercentage',
   'netKgSalePrice',
   'laborCost',
+  'unregisteredLaborCost',
   'waterElectricityCost',
   'transportCost',
   'packagingCost',
@@ -23,6 +24,7 @@ export const emptySlaughterForm = {
   yieldPercentage: '',
   netKgSalePrice: '',
   laborCost: '',
+  unregisteredLaborCost: '',
   waterElectricityCost: '',
   transportCost: '',
   packagingCost: '',
@@ -57,14 +59,21 @@ export function normalizeWorkers(workers = []) {
 
   return workers
     .map((worker) => ({
+      workerId: worker.workerId || '',
       name: worker.name?.trim() || '',
       salary: toNumber(worker.salary),
+      advance: toNumber(worker.advance),
+      remainingSalary: roundNumber(toNumber(worker.salary) - toNumber(worker.advance)),
     }))
-    .filter((worker) => worker.name || worker.salary > 0);
+    .filter((worker) => worker.workerId || worker.name || worker.salary > 0 || worker.advance > 0);
 }
 
 export function getWorkersLaborCost(workers = []) {
   return normalizeWorkers(workers).reduce((total, worker) => total + toNumber(worker.salary), 0);
+}
+
+export function getWorkersAdvanceTotal(workers = []) {
+  return normalizeWorkers(workers).reduce((total, worker) => total + toNumber(worker.advance), 0);
 }
 
 export function normalizeSlaughterInput(values) {
@@ -80,9 +89,8 @@ export function normalizeSlaughterInput(values) {
     normalized[field] = toNumber(values[field]);
   });
 
-  if (workers.length) {
-    normalized.laborCost = roundNumber(getWorkersLaborCost(workers));
-  }
+  normalized.unregisteredLaborCost = toNumber(values.unregisteredLaborCost);
+  normalized.laborCost = roundNumber(getWorkersLaborCost(workers) + normalized.unregisteredLaborCost);
 
   return normalized;
 }

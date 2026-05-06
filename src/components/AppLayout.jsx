@@ -10,6 +10,7 @@ import {
   PlusCircle,
   Settings,
   Sun,
+  Users,
   X,
 } from 'lucide-react';
 import InstallPwaButton from './InstallPwaButton.jsx';
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/slaughters/new', label: 'عملية جديدة', icon: PlusCircle },
   { to: '/records', label: 'السجلات', icon: ClipboardList },
   { to: '/reports', label: 'التقارير', icon: BarChart3 },
+  { to: '/workers', label: 'العمال', icon: Users },
   { to: '/settings', label: 'الإعدادات', icon: Settings },
 ];
 
@@ -29,6 +31,7 @@ const pageTitles = {
   '/slaughters/new': 'إضافة عملية ذبح',
   '/records': 'سجلات العمليات',
   '/reports': 'التقارير',
+  '/workers': 'العمال',
   '/settings': 'الإعدادات',
 };
 

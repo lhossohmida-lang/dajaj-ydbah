@@ -11,6 +11,7 @@ const details = [
   ['netKgSalePrice', 'سعر بيع الكيلو صافي', 'currency'],
   ['workers', 'العمال', 'workers'],
   ['laborCost', 'إجمالي أجور العمال', 'currency'],
+  ['unregisteredLaborCost', 'عمال غير مسجلين', 'currency'],
   ['totalLiveWeight', 'الوزن الحي الكلي', 'kg'],
   ['purchaseCost', 'تكلفة الشراء', 'currency'],
   ['netWeight', 'الوزن الصافي', 'kg'],
@@ -31,7 +32,14 @@ function formatValue(row, key, type, currency) {
       return 'غير مسجل';
     }
 
-    return row.workers.map((worker) => `${worker.name}: ${formatCurrency(worker.salary, currency)}`).join('، ');
+    return row.workers
+      .map((worker) => {
+        const salary = formatCurrency(worker.salary, currency);
+        const advance = formatCurrency(worker.advance || 0, currency);
+        const remaining = formatCurrency(worker.remainingSalary ?? Number(worker.salary || 0) - Number(worker.advance || 0), currency);
+        return `${worker.name}: الأجر ${salary}، السلفة ${advance}، المتبقي ${remaining}`;
+      })
+      .join(' | ');
   }
 
   if (type === 'currency') {

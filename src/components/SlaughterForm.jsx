@@ -6,7 +6,15 @@ import FormField from './FormField.jsx';
 import StatsGrid from './StatsGrid.jsx';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useSettings } from '../hooks/useSettings.js';
-import { calculateSlaughter, emptySlaughterForm, getWorkersLaborCost, normalizeSlaughterInput } from '../utils/calculations.js';
+import { useWorkers } from '../hooks/useWorkers.js';
+import {
+  calculateSlaughter,
+  emptySlaughterForm,
+  getWorkersAdvanceTotal,
+  getWorkersLaborCost,
+  normalizeSlaughterInput,
+  toNumber,
+} from '../utils/calculations.js';
 import { todayInputValue } from '../utils/dateUtils.js';
 import { formatCurrency } from '../utils/formatters.js';
 import { validateSlaughter } from '../utils/validation.js';
@@ -20,29 +28,31 @@ const costFields = [
   ['otherCost', 'مصاريف أخرى'],
 ];
 
-const emptyWorker = { name: '', salary: '' };
+const emptyWorker = { workerId: '', name: '', salary: '', advance: '' };
 
-function calculateFormLaborCost(workers) {
-  return getWorkersLaborCost(workers);
+function calculateFormLaborCost(workers, unregisteredLaborCost = 0) {
+  return getWorkersLaborCost(workers) + toNumber(unregisteredLaborCost);
 }
 
 function buildWorkers(initialValues) {
   if (Array.isArray(initialValues?.workers) && initialValues.workers.length) {
     return initialValues.workers.map((worker) => ({
+      workerId: worker.workerId || '',
       name: worker.name || '',
       salary: worker.salary ?? '',
+      advance: worker.advance ?? '',
     }));
   }
 
   if (initialValues && Number(initialValues.laborCost) > 0) {
-    return [{ name: 'عمال العملية', salary: initialValues.laborCost }];
+    return [{ workerId: '', name: 'عمال العملية', salary: initialValues.laborCost, advance: '' }];
   }
 
   return [{ ...emptyWorker }];
 }
 
 function withWorkersTotal(values) {
-  const laborCost = calculateFormLaborCost(values.workers);
+  const laborCost = calculateFormLaborCost(values.workers, values.unregisteredLaborCost);
 
   return {
     ...values,
@@ -58,7 +68,8 @@ function buildInitialForm(settings, initialValues) {
       ...emptySlaughterForm,
       ...initialValues,
       workers,
-      laborCost: calculateFormLaborCost(workers),
+      laborCost: calculateFormLaborCost(workers, initialValues.unregisteredLaborCost),
+      unregisteredLaborCost: initialValues.unregisteredLaborCost ?? 0,
     };
   }
 
@@ -71,7 +82,8 @@ function buildInitialForm(settings, initialValues) {
     yieldPercentage: settings.defaultYieldPercentage,
     netKgSalePrice: settings.defaultNetKgSalePrice,
     liveKgPurchasePrice: settings.defaultLiveKgPurchasePrice,
-    laborCost: calculateFormLaborCost(workers),
+    laborCost: calculateFormLaborCost(workers, 0),
+    unregisteredLaborCost: 0,
     waterElectricityCost: 0,
     transportCost: 0,
     packagingCost: 0,
@@ -85,6 +97,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
   const navigate = useNavigate();
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { workers: registeredWorkers, loading: workersLoading } = useWorkers();
   const [values, setValues] = useState(() => buildInitialForm(settings, initialValues));
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -99,12 +112,21 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
   const preparedValues = useMemo(() => withWorkersTotal(values), [values]);
   const calculation = useMemo(() => calculateSlaughter(normalizeSlaughterInput(preparedValues)), [preparedValues]);
   const laborCost = preparedValues.laborCost;
+  const advanceTotal = getWorkersAdvanceTotal(values.workers);
 
   function updateValue(field, value) {
-    setValues((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setValues((current) => {
+      const nextValues = {
+        ...current,
+        [field]: value,
+      };
+
+      if (field === 'unregisteredLaborCost') {
+        nextValues.laborCost = calculateFormLaborCost(nextValues.workers, value);
+      }
+
+      return nextValues;
+    });
     setErrors((current) => ({
       ...current,
       [field]: '',
@@ -113,26 +135,36 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
 
   function updateWorker(index, field, value) {
     setValues((current) => {
+      const selectedWorker = field === 'workerId' ? registeredWorkers.find((worker) => worker.id === value) : null;
       const workers = current.workers.map((worker, workerIndex) =>
         workerIndex === index
-          ? {
-              ...worker,
-              [field]: value,
-            }
+          ? selectedWorker
+            ? {
+                ...worker,
+                workerId: selectedWorker.id,
+                name: selectedWorker.name,
+                salary: selectedWorker.defaultSalary ?? worker.salary ?? '',
+              }
+            : {
+                ...worker,
+                [field]: value,
+                ...(field === 'workerId' ? { name: '' } : {}),
+              }
           : worker,
       );
 
       return {
         ...current,
         workers,
-        laborCost: calculateFormLaborCost(workers),
+        laborCost: calculateFormLaborCost(workers, current.unregisteredLaborCost),
       };
     });
     setErrors((current) => ({
       ...current,
       workers: '',
-      [`workerName-${index}`]: field === 'name' ? '' : current[`workerName-${index}`],
+      [`workerId-${index}`]: field === 'workerId' ? '' : current[`workerId-${index}`],
       [`workerSalary-${index}`]: field === 'salary' ? '' : current[`workerSalary-${index}`],
+      [`workerAdvance-${index}`]: field === 'advance' ? '' : current[`workerAdvance-${index}`],
     }));
   }
 
@@ -143,7 +175,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
       return {
         ...current,
         workers,
-        laborCost: calculateFormLaborCost(workers),
+        laborCost: calculateFormLaborCost(workers, current.unregisteredLaborCost),
       };
     });
   }
@@ -158,7 +190,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
       return {
         ...current,
         workers,
-        laborCost: calculateFormLaborCost(workers),
+        laborCost: calculateFormLaborCost(workers, current.unregisteredLaborCost),
       };
     });
     setErrors((current) =>
@@ -166,7 +198,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
         Object.entries({
           ...current,
           workers: '',
-        }).filter(([key]) => !key.startsWith('workerName-') && !key.startsWith('workerSalary-')),
+        }).filter(([key]) => !key.startsWith('workerId-') && !key.startsWith('workerSalary-') && !key.startsWith('workerAdvance-')),
       ),
     );
   }
@@ -328,25 +360,49 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
               </span>
               <div>
                 <h4 className="text-base font-black">العمال</h4>
-                <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">أضف كل عامل مع راتبه الخاص.</p>
+                <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">اختر العمال المسجلين، ثم سجل أجر العملية والسلفة.</p>
               </div>
             </div>
-            <div className="rounded-lg bg-white px-3 py-2 text-sm font-black text-teal-700 shadow-sm dark:bg-stone-950 dark:text-teal-300">
-              إجمالي أجور العمال: {formatCurrency(laborCost, settings.currency)}
+            <div className="grid gap-2 text-sm sm:grid-cols-3">
+              <div className="rounded-lg bg-white px-3 py-2 font-black text-teal-700 shadow-sm dark:bg-stone-950 dark:text-teal-300">
+                أجور العمال: {formatCurrency(laborCost, settings.currency)}
+              </div>
+              <div className="rounded-lg bg-white px-3 py-2 font-black text-amber-700 shadow-sm dark:bg-stone-950 dark:text-amber-300">
+                السلف: {formatCurrency(advanceTotal, settings.currency)}
+              </div>
+              <div className="rounded-lg bg-white px-3 py-2 font-black text-stone-700 shadow-sm dark:bg-stone-950 dark:text-stone-200">
+                المتبقي: {formatCurrency(Math.max(laborCost - advanceTotal - toNumber(values.unregisteredLaborCost), 0), settings.currency)}
+              </div>
             </div>
           </div>
           {errors.workers && <p className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-400">{errors.workers}</p>}
+          {workersLoading && <p className="mb-3 text-sm font-semibold text-stone-500 dark:text-stone-400">جاري تحميل سجل العمال...</p>}
           <div className="space-y-3">
             {values.workers.map((worker, index) => (
-              <div key={`worker-${index}`} className="grid gap-3 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950 md:grid-cols-[1fr_220px_44px]">
-                <FormField label={`اسم العامل ${index + 1}`} error={errors[`workerName-${index}`]}>
-                  <input
-                    type="text"
+              <div key={`worker-${index}`} className="grid gap-3 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950 xl:grid-cols-[1.2fr_180px_180px_160px_44px]">
+                <FormField label={`العامل ${index + 1}`} error={errors[`workerId-${index}`]}>
+                  <select
                     className="app-input"
-                    value={worker.name}
-                    onChange={(event) => updateWorker(index, 'name', event.target.value)}
-                    placeholder="اسم العامل"
-                  />
+                    value={worker.workerId}
+                    onChange={(event) => updateWorker(index, 'workerId', event.target.value)}
+                  >
+                    <option value="">اختر عاملًا مسجلًا</option>
+                    {registeredWorkers.map((registeredWorker) => (
+                      <option key={registeredWorker.id} value={registeredWorker.id}>
+                        {registeredWorker.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!worker.workerId && worker.name && (
+                    <span className="mt-1.5 block text-xs font-semibold text-stone-500 dark:text-stone-400">
+                      العامل المحفوظ سابقًا: {worker.name}
+                    </span>
+                  )}
+                  {!registeredWorkers.length && (
+                    <span className="mt-1.5 block text-xs font-semibold text-amber-700 dark:text-amber-300">
+                      أضف العمال من صفحة العمال أولًا، أو استعمل حقل العمال غير المسجلين أدناه.
+                    </span>
+                  )}
                 </FormField>
                 <FormField label="الراتب" error={errors[`workerSalary-${index}`]}>
                   <input
@@ -359,6 +415,23 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
                     placeholder="0"
                   />
                 </FormField>
+                <FormField label="السلفة" error={errors[`workerAdvance-${index}`]}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="app-input"
+                    value={worker.advance}
+                    onChange={(event) => updateWorker(index, 'advance', event.target.value)}
+                    placeholder="0"
+                  />
+                </FormField>
+                <div>
+                  <span className="app-label">المتبقي</span>
+                  <div className="flex h-11 items-center rounded-lg border border-stone-200 bg-stone-100 px-3 text-sm font-black text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-100">
+                    {formatCurrency(Math.max(toNumber(worker.salary) - toNumber(worker.advance), 0), settings.currency)}
+                  </div>
+                </div>
                 <div className="flex items-end">
                   <button
                     type="button"
@@ -375,8 +448,21 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
           </div>
           <button type="button" onClick={addWorker} className="app-button-secondary mt-4">
             <Plus className="h-4 w-4" aria-hidden="true" />
-            إضافة عامل
+            إضافة عامل مسجل
           </button>
+          <div className="mt-5 max-w-md">
+            <FormField label="مصاريف عمال غير مسجلين دفعة واحدة" error={errors.unregisteredLaborCost}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="app-input"
+                value={values.unregisteredLaborCost}
+                onChange={(event) => updateValue('unregisteredLaborCost', event.target.value)}
+                placeholder="0"
+              />
+            </FormField>
+          </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {costFields.map(([field, label]) => (

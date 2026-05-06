@@ -9,6 +9,7 @@ const fieldLabels = {
   yieldPercentage: 'نسبة التصافي',
   netKgSalePrice: 'سعر بيع الكيلو صافي',
   laborCost: 'أجور العمال',
+  unregisteredLaborCost: 'مصاريف العمال غير المسجلين',
   waterElectricityCost: 'الكهرباء والماء',
   transportCost: 'النقل',
   packagingCost: 'الأكياس والتغليف',
@@ -20,7 +21,11 @@ const fieldLabels = {
 export function validateSlaughter(values) {
   const errors = {};
   const workers = Array.isArray(values.workers) ? values.workers : [];
-  const filledWorkers = workers.filter((worker) => worker.name?.trim() || worker.salary !== '' || worker.salary === 0);
+  const hasAdvanceValue = (worker) => worker.advance !== '' && worker.advance !== null && worker.advance !== undefined;
+  const filledWorkers = workers.filter(
+    (worker) => worker.workerId || worker.name?.trim() || worker.salary !== '' || worker.salary === 0 || hasAdvanceValue(worker),
+  );
+  const unregisteredLaborCost = Number(values.unregisteredLaborCost || 0);
 
   if (!values.date) {
     errors.date = 'التاريخ مطلوب.';
@@ -30,21 +35,22 @@ export function validateSlaughter(values) {
     errors.supplierName = 'اسم المورد مطلوب.';
   }
 
-  if (!filledWorkers.length) {
-    errors.workers = 'أضف عاملًا واحدًا على الأقل مع راتبه.';
+  if (!filledWorkers.length && unregisteredLaborCost <= 0) {
+    errors.workers = 'أضف عاملًا مسجلًا أو أدخل مصاريف العمال غير المسجلين.';
   }
 
   workers.forEach((worker, index) => {
-    const hasAnyValue = worker.name?.trim() || worker.salary !== '' || worker.salary === 0;
+    const hasAnyValue = worker.workerId || worker.name?.trim() || worker.salary !== '' || worker.salary === 0 || hasAdvanceValue(worker);
 
     if (!hasAnyValue) {
       return;
     }
 
     const salary = Number(worker.salary);
+    const advance = worker.advance === '' || worker.advance === null || worker.advance === undefined ? 0 : Number(worker.advance);
 
-    if (!worker.name?.trim()) {
-      errors[`workerName-${index}`] = 'اسم العامل مطلوب.';
+    if (!worker.workerId && !worker.name?.trim()) {
+      errors[`workerId-${index}`] = 'اختر العامل من السجل.';
     }
 
     if (worker.salary === '' || worker.salary === null || worker.salary === undefined) {
@@ -53,6 +59,14 @@ export function validateSlaughter(values) {
       errors[`workerSalary-${index}`] = 'راتب العامل يجب أن يكون رقمًا صحيحًا.';
     } else if (salary < 0) {
       errors[`workerSalary-${index}`] = 'راتب العامل لا يمكن أن يكون سالبًا.';
+    }
+
+    if (!Number.isFinite(advance)) {
+      errors[`workerAdvance-${index}`] = 'السلفة يجب أن تكون رقمًا.';
+    } else if (advance < 0) {
+      errors[`workerAdvance-${index}`] = 'السلفة لا يمكن أن تكون سالبة.';
+    } else if (Number.isFinite(salary) && advance > salary) {
+      errors[`workerAdvance-${index}`] = 'السلفة لا يمكن أن تكون أكبر من الراتب.';
     }
   });
 

@@ -12,6 +12,7 @@ const RecordsPage = lazy(() => import('./pages/RecordsPage.jsx'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const WorkersPage = lazy(() => import('./pages/WorkersPage.jsx'));
 
 function ProtectedRoute() {
   const { user, loading } = useAuth();
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="slaughters/:id/edit" element={<EditSlaughterPage />} />
             <Route path="records" element={<RecordsPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="workers" element={<WorkersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
