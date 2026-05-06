@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calculator, Plus, RotateCcw, Save, Trash2, Users } from 'lucide-react';
+import { Calculator, ChevronLeft, ChevronRight, Plus, RotateCcw, Save, Trash2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ErrorMessage from './ErrorMessage.jsx';
 import FormField from './FormField.jsx';
@@ -29,6 +29,8 @@ const costFields = [
 ];
 
 const emptyWorker = { workerId: '', name: '', salary: '', advance: '' };
+const formSteps = ['معلومات عامة', 'معلومات الدجاج', 'المصاريف'];
+const chickenStepFields = ['chickenCount', 'averageLiveWeight', 'liveKgPurchasePrice', 'yieldPercentage', 'netKgSalePrice'];
 
 function calculateFormLaborCost(workers, unregisteredLaborCost = 0) {
   return getWorkersLaborCost(workers) + toNumber(unregisteredLaborCost);
@@ -104,6 +106,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
   const [statusMessage, setStatusMessage] = useState('');
   const [statusTone, setStatusTone] = useState('info');
   const [showCalculation, setShowCalculation] = useState(Boolean(initialValues));
+  const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
     setValues(buildInitialForm(settings, initialValues));
@@ -113,6 +116,47 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
   const calculation = useMemo(() => calculateSlaughter(normalizeSlaughterInput(preparedValues)), [preparedValues]);
   const laborCost = preparedValues.laborCost;
   const advanceTotal = getWorkersAdvanceTotal(values.workers);
+  const isLastStep = activeStep === formSteps.length - 1;
+
+  function validateStep(step) {
+    const validationErrors = validateSlaughter(preparedValues);
+
+    if (step === 0) {
+      return Object.fromEntries(
+        Object.entries(validationErrors).filter(([key]) => ['date', 'supplierName'].includes(key)),
+      );
+    }
+
+    if (step === 1) {
+      return Object.fromEntries(
+        Object.entries(validationErrors).filter(([key]) => chickenStepFields.includes(key)),
+      );
+    }
+
+    return validationErrors;
+  }
+
+  function handleNext() {
+    const stepErrors = validateStep(activeStep);
+    setErrors((current) => ({
+      ...current,
+      ...stepErrors,
+    }));
+
+    if (Object.keys(stepErrors).length) {
+      setStatusTone('error');
+      setStatusMessage('يرجى تصحيح بيانات هذه الخطوة قبل المتابعة.');
+      return;
+    }
+
+    setStatusMessage('');
+    setActiveStep((current) => Math.min(current + 1, formSteps.length - 1));
+  }
+
+  function handlePrevious() {
+    setStatusMessage('');
+    setActiveStep((current) => Math.max(current - 1, 0));
+  }
 
   function updateValue(field, value) {
     setValues((current) => {
@@ -217,10 +261,17 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
     setShowCalculation(false);
     setStatusTone('info');
     setStatusMessage('تم إفراغ الحقول.');
+    setActiveStep(0);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+
+    if (!isLastStep) {
+      handleNext();
+      return;
+    }
+
     const validationErrors = validateSlaughter(preparedValues);
     setErrors(validationErrors);
     setShowCalculation(true);
@@ -254,6 +305,27 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
     <form onSubmit={handleSubmit} className="space-y-6">
       {statusMessage && <ErrorMessage message={statusMessage} tone={statusTone} />}
 
+      <section className="app-card p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          {formSteps.map((step, index) => (
+            <div
+              key={step}
+              className={`rounded-lg border px-4 py-3 text-sm font-black transition ${
+                activeStep === index
+                  ? 'border-teal-600 bg-teal-700 text-white'
+                  : index < activeStep
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+                    : 'border-stone-200 bg-stone-50 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400'
+              }`}
+            >
+              <span className="ml-2 inline-grid h-6 w-6 place-items-center rounded-full bg-white/20 text-xs">{index + 1}</span>
+              {step}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {activeStep === 0 && (
       <section className="app-card p-5">
         <div className="mb-5">
           <h3 className="text-lg font-black">معلومات عامة</h3>
@@ -287,7 +359,9 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
           </FormField>
         </div>
       </section>
+      )}
 
+      {activeStep === 1 && (
       <section className="app-card p-5">
         <div className="mb-5">
           <h3 className="text-lg font-black">معلومات الدجاج</h3>
@@ -346,7 +420,9 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
           </FormField>
         </div>
       </section>
+      )}
 
+      {activeStep === 2 && (
       <section className="app-card p-5">
         <div className="mb-5">
           <h3 className="text-lg font-black">المصاريف</h3>
@@ -479,16 +555,33 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
           ))}
         </div>
       </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={handleCalculate} className="app-button-secondary">
-          <Calculator className="h-4 w-4" aria-hidden="true" />
-          حساب
-        </button>
-        <button type="submit" disabled={saving} className="app-button-primary">
-          <Save className="h-4 w-4" aria-hidden="true" />
-          {saving ? 'جاري الحفظ...' : mode === 'create' ? 'حفظ العملية' : 'حفظ التعديل'}
-        </button>
+        {activeStep > 0 && (
+          <button type="button" onClick={handlePrevious} className="app-button-secondary">
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            السابق
+          </button>
+        )}
+        {!isLastStep && (
+          <button type="button" onClick={handleNext} className="app-button-primary">
+            التالي
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+        {isLastStep && (
+          <>
+            <button type="button" onClick={handleCalculate} className="app-button-secondary">
+              <Calculator className="h-4 w-4" aria-hidden="true" />
+              حساب
+            </button>
+            <button type="submit" disabled={saving} className="app-button-primary">
+              <Save className="h-4 w-4" aria-hidden="true" />
+              {saving ? 'جاري الحفظ...' : mode === 'create' ? 'حفظ العملية' : 'حفظ التعديل'}
+            </button>
+          </>
+        )}
         <button type="button" onClick={handleReset} className="app-button-secondary">
           <RotateCcw className="h-4 w-4" aria-hidden="true" />
           إفراغ الحقول
