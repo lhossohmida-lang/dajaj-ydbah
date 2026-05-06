@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calculator, RotateCcw, Save } from 'lucide-react';
+import { Calculator, Plus, RotateCcw, Save, Trash2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ErrorMessage from './ErrorMessage.jsx';
 import FormField from './FormField.jsx';
 import StatsGrid from './StatsGrid.jsx';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useSettings } from '../hooks/useSettings.js';
-import { calculateSlaughter, emptySlaughterForm, normalizeSlaughterInput } from '../utils/calculations.js';
+import { calculateSlaughter, emptySlaughterForm, getWorkersLaborCost, normalizeSlaughterInput } from '../utils/calculations.js';
 import { todayInputValue } from '../utils/dateUtils.js';
+import { formatCurrency } from '../utils/formatters.js';
 import { validateSlaughter } from '../utils/validation.js';
 
 const costFields = [
-  ['laborCost', 'أجور العمال'],
   ['waterElectricityCost', 'الكهرباء والماء'],
   ['transportCost', 'النقل'],
   ['packagingCost', 'الأكياس والتغليف'],
@@ -20,21 +20,58 @@ const costFields = [
   ['otherCost', 'مصاريف أخرى'],
 ];
 
+const emptyWorker = { name: '', salary: '' };
+
+function calculateFormLaborCost(workers) {
+  return getWorkersLaborCost(workers);
+}
+
+function buildWorkers(initialValues) {
+  if (Array.isArray(initialValues?.workers) && initialValues.workers.length) {
+    return initialValues.workers.map((worker) => ({
+      name: worker.name || '',
+      salary: worker.salary ?? '',
+    }));
+  }
+
+  if (initialValues && Number(initialValues.laborCost) > 0) {
+    return [{ name: 'عمال العملية', salary: initialValues.laborCost }];
+  }
+
+  return [{ ...emptyWorker }];
+}
+
+function withWorkersTotal(values) {
+  const laborCost = calculateFormLaborCost(values.workers);
+
+  return {
+    ...values,
+    laborCost,
+  };
+}
+
 function buildInitialForm(settings, initialValues) {
   if (initialValues) {
+    const workers = buildWorkers(initialValues);
+
     return {
       ...emptySlaughterForm,
       ...initialValues,
+      workers,
+      laborCost: calculateFormLaborCost(workers),
     };
   }
 
+  const workers = buildWorkers(null);
+
   return {
     ...emptySlaughterForm,
+    workers,
     date: todayInputValue(),
     yieldPercentage: settings.defaultYieldPercentage,
     netKgSalePrice: settings.defaultNetKgSalePrice,
     liveKgPurchasePrice: settings.defaultLiveKgPurchasePrice,
-    laborCost: 0,
+    laborCost: calculateFormLaborCost(workers),
     waterElectricityCost: 0,
     transportCost: 0,
     packagingCost: 0,
@@ -59,7 +96,9 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
     setValues(buildInitialForm(settings, initialValues));
   }, [settings, initialValues]);
 
-  const calculation = useMemo(() => calculateSlaughter(normalizeSlaughterInput(values)), [values]);
+  const preparedValues = useMemo(() => withWorkersTotal(values), [values]);
+  const calculation = useMemo(() => calculateSlaughter(normalizeSlaughterInput(preparedValues)), [preparedValues]);
+  const laborCost = preparedValues.laborCost;
 
   function updateValue(field, value) {
     setValues((current) => ({
@@ -72,8 +111,68 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
     }));
   }
 
+  function updateWorker(index, field, value) {
+    setValues((current) => {
+      const workers = current.workers.map((worker, workerIndex) =>
+        workerIndex === index
+          ? {
+              ...worker,
+              [field]: value,
+            }
+          : worker,
+      );
+
+      return {
+        ...current,
+        workers,
+        laborCost: calculateFormLaborCost(workers),
+      };
+    });
+    setErrors((current) => ({
+      ...current,
+      workers: '',
+      [`workerName-${index}`]: field === 'name' ? '' : current[`workerName-${index}`],
+      [`workerSalary-${index}`]: field === 'salary' ? '' : current[`workerSalary-${index}`],
+    }));
+  }
+
+  function addWorker() {
+    setValues((current) => {
+      const workers = [...current.workers, { ...emptyWorker }];
+
+      return {
+        ...current,
+        workers,
+        laborCost: calculateFormLaborCost(workers),
+      };
+    });
+  }
+
+  function removeWorker(index) {
+    setValues((current) => {
+      const workers =
+        current.workers.length > 1
+          ? current.workers.filter((_, workerIndex) => workerIndex !== index)
+          : [{ ...emptyWorker }];
+
+      return {
+        ...current,
+        workers,
+        laborCost: calculateFormLaborCost(workers),
+      };
+    });
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries({
+          ...current,
+          workers: '',
+        }).filter(([key]) => !key.startsWith('workerName-') && !key.startsWith('workerSalary-')),
+      ),
+    );
+  }
+
   function handleCalculate() {
-    const validationErrors = validateSlaughter(values);
+    const validationErrors = validateSlaughter(preparedValues);
     setErrors(validationErrors);
     setShowCalculation(true);
     setStatusTone(Object.keys(validationErrors).length ? 'error' : 'success');
@@ -90,7 +189,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const validationErrors = validateSlaughter(values);
+    const validationErrors = validateSlaughter(preparedValues);
     setErrors(validationErrors);
     setShowCalculation(true);
 
@@ -102,7 +201,7 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
 
     try {
       setSaving(true);
-      await onSubmit(user.uid, values);
+      await onSubmit(user.uid, preparedValues);
       setStatusTone('success');
       setStatusMessage(mode === 'create' ? 'تم حفظ العملية بنجاح.' : 'تم تحديث العملية بنجاح.');
 
@@ -220,6 +319,64 @@ export default function SlaughterForm({ mode = 'create', initialValues, onSubmit
         <div className="mb-5">
           <h3 className="text-lg font-black">المصاريف</h3>
           <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">كل مصاريف التشغيل الإضافية للعملية.</p>
+        </div>
+        <div className="mb-6 rounded-lg border border-stone-200 bg-stone-50 p-4 dark:border-stone-800 dark:bg-stone-900/60">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-teal-100 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
+                <Users className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <h4 className="text-base font-black">العمال</h4>
+                <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">أضف كل عامل مع راتبه الخاص.</p>
+              </div>
+            </div>
+            <div className="rounded-lg bg-white px-3 py-2 text-sm font-black text-teal-700 shadow-sm dark:bg-stone-950 dark:text-teal-300">
+              إجمالي أجور العمال: {formatCurrency(laborCost, settings.currency)}
+            </div>
+          </div>
+          {errors.workers && <p className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-400">{errors.workers}</p>}
+          <div className="space-y-3">
+            {values.workers.map((worker, index) => (
+              <div key={`worker-${index}`} className="grid gap-3 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950 md:grid-cols-[1fr_220px_44px]">
+                <FormField label={`اسم العامل ${index + 1}`} error={errors[`workerName-${index}`]}>
+                  <input
+                    type="text"
+                    className="app-input"
+                    value={worker.name}
+                    onChange={(event) => updateWorker(index, 'name', event.target.value)}
+                    placeholder="اسم العامل"
+                  />
+                </FormField>
+                <FormField label="الراتب" error={errors[`workerSalary-${index}`]}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="app-input"
+                    value={worker.salary}
+                    onChange={(event) => updateWorker(index, 'salary', event.target.value)}
+                    placeholder="0"
+                  />
+                </FormField>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => removeWorker(index)}
+                    className="app-button-danger h-11 w-11 px-0"
+                    title="حذف العامل"
+                    aria-label="حذف العامل"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addWorker} className="app-button-secondary mt-4">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            إضافة عامل
+          </button>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {costFields.map(([field, label]) => (

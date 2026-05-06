@@ -16,6 +16,7 @@ export const numericSlaughterFields = [
 export const emptySlaughterForm = {
   date: '',
   supplierName: '',
+  workers: [],
   chickenCount: '',
   averageLiveWeight: '',
   liveKgPurchasePrice: '',
@@ -49,16 +50,39 @@ export function toNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function normalizeWorkers(workers = []) {
+  if (!Array.isArray(workers)) {
+    return [];
+  }
+
+  return workers
+    .map((worker) => ({
+      name: worker.name?.trim() || '',
+      salary: toNumber(worker.salary),
+    }))
+    .filter((worker) => worker.name || worker.salary > 0);
+}
+
+export function getWorkersLaborCost(workers = []) {
+  return normalizeWorkers(workers).reduce((total, worker) => total + toNumber(worker.salary), 0);
+}
+
 export function normalizeSlaughterInput(values) {
+  const workers = normalizeWorkers(values.workers);
   const normalized = {
     date: values.date,
     supplierName: values.supplierName?.trim() || '',
+    workers,
     notes: values.notes?.trim() || '',
   };
 
   numericSlaughterFields.forEach((field) => {
     normalized[field] = toNumber(values[field]);
   });
+
+  if (workers.length) {
+    normalized.laborCost = roundNumber(getWorkersLaborCost(workers));
+  }
 
   return normalized;
 }

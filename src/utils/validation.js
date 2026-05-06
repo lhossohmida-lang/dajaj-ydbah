@@ -19,6 +19,8 @@ const fieldLabels = {
 
 export function validateSlaughter(values) {
   const errors = {};
+  const workers = Array.isArray(values.workers) ? values.workers : [];
+  const filledWorkers = workers.filter((worker) => worker.name?.trim() || worker.salary !== '' || worker.salary === 0);
 
   if (!values.date) {
     errors.date = 'التاريخ مطلوب.';
@@ -27,6 +29,32 @@ export function validateSlaughter(values) {
   if (!values.supplierName?.trim()) {
     errors.supplierName = 'اسم المورد مطلوب.';
   }
+
+  if (!filledWorkers.length) {
+    errors.workers = 'أضف عاملًا واحدًا على الأقل مع راتبه.';
+  }
+
+  workers.forEach((worker, index) => {
+    const hasAnyValue = worker.name?.trim() || worker.salary !== '' || worker.salary === 0;
+
+    if (!hasAnyValue) {
+      return;
+    }
+
+    const salary = Number(worker.salary);
+
+    if (!worker.name?.trim()) {
+      errors[`workerName-${index}`] = 'اسم العامل مطلوب.';
+    }
+
+    if (worker.salary === '' || worker.salary === null || worker.salary === undefined) {
+      errors[`workerSalary-${index}`] = 'راتب العامل مطلوب.';
+    } else if (!Number.isFinite(salary)) {
+      errors[`workerSalary-${index}`] = 'راتب العامل يجب أن يكون رقمًا صحيحًا.';
+    } else if (salary < 0) {
+      errors[`workerSalary-${index}`] = 'راتب العامل لا يمكن أن يكون سالبًا.';
+    }
+  });
 
   numericSlaughterFields.forEach((field) => {
     const rawValue = values[field];

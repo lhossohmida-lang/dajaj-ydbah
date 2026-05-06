@@ -15,6 +15,8 @@ function buildCsvRows(rows) {
   return rows.map((row) => ({
     التاريخ: row.date,
     المورد: row.supplierName,
+    العمال: Array.isArray(row.workers) ? row.workers.map((worker) => `${worker.name}: ${worker.salary}`).join(' | ') : '',
+    'أجور العمال': row.laborCost,
     'عدد الدجاج': row.chickenCount,
     'الوزن الحي الكلي': row.totalLiveWeight,
     'الوزن الصافي': row.netWeight,

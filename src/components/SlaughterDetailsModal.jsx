@@ -9,6 +9,8 @@ const details = [
   ['liveKgPurchasePrice', 'سعر شراء الكيلو حي', 'currency'],
   ['yieldPercentage', 'نسبة التصافي', 'percent'],
   ['netKgSalePrice', 'سعر بيع الكيلو صافي', 'currency'],
+  ['workers', 'العمال', 'workers'],
+  ['laborCost', 'إجمالي أجور العمال', 'currency'],
   ['totalLiveWeight', 'الوزن الحي الكلي', 'kg'],
   ['purchaseCost', 'تكلفة الشراء', 'currency'],
   ['netWeight', 'الوزن الصافي', 'kg'],
@@ -24,6 +26,14 @@ const details = [
 ];
 
 function formatValue(row, key, type, currency) {
+  if (type === 'workers') {
+    if (!Array.isArray(row.workers) || !row.workers.length) {
+      return 'غير مسجل';
+    }
+
+    return row.workers.map((worker) => `${worker.name}: ${formatCurrency(worker.salary, currency)}`).join('، ');
+  }
+
   if (type === 'currency') {
     return formatCurrency(row[key], currency);
   }
