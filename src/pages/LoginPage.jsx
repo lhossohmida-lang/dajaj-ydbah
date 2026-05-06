@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import AuthLayout from '../components/AuthLayout.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
@@ -78,11 +78,8 @@ export default function LoginPage() {
           <LogIn className="h-4 w-4" aria-hidden="true" />
           {loading ? 'جاري الدخول...' : 'دخول'}
         </button>
-        <p className="text-center text-sm text-stone-500 dark:text-stone-400">
-          لا تملك حسابًا؟{' '}
-          <Link to="/register" className="font-black text-teal-700 hover:text-teal-800 dark:text-teal-400">
-            إنشاء حساب جديد
-          </Link>
+        <p className="text-center text-sm font-semibold text-stone-500 dark:text-stone-400">
+          الدخول مخصص للحسابات المعتمدة فقط.
         </p>
       </form>
     </AuthLayout>

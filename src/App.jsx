@@ -10,7 +10,6 @@ const EditSlaughterPage = lazy(() => import('./pages/EditSlaughterPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const NewSlaughterPage = lazy(() => import('./pages/NewSlaughterPage.jsx'));
 const RecordsPage = lazy(() => import('./pages/RecordsPage.jsx'));
-const RegisterPage = lazy(() => import('./pages/RegisterPage.jsx'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
 const WorkersPage = lazy(() => import('./pages/WorkersPage.jsx'));
@@ -44,14 +43,6 @@ export default function App() {
           element={
             <GuestRoute>
               <LoginPage />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <GuestRoute>
-              <RegisterPage />
             </GuestRoute>
           }
         />
