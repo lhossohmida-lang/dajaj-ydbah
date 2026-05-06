@@ -1,5 +1,7 @@
 node_modules
 dist
+.firebase
+.claude
 .env
 .env.local
 .DS_Store
