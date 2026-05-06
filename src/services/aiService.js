@@ -1,4 +1,26 @@
-const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || 'http://localhost:5000';
+function getDefaultAIBackendUrl() {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:5000';
+  }
+
+  const { hostname, protocol } = window.location;
+
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `${protocol}//${hostname}:5000`;
+  }
+
+  return 'http://localhost:5000';
+}
+
+const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || getDefaultAIBackendUrl();
+
+async function requestAI(path, options) {
+  try {
+    return await fetch(`${AI_BACKEND_URL}${path}`, options);
+  } catch {
+    throw new Error('تعذر الاتصال بخادم الذكاء الاصطناعي المحلي. شغل Backend بالأمر: npm run server');
+  }
+}
 
 async function parseResponse(response) {
   const data = await response.json().catch(() => ({}));
@@ -11,12 +33,12 @@ async function parseResponse(response) {
 }
 
 export async function checkAIStatus() {
-  const response = await fetch(`${AI_BACKEND_URL}/api/ai/status`);
+  const response = await requestAI('/api/ai/status');
   return parseResponse(response);
 }
 
 export async function sendAIMessage(message, businessContext, history) {
-  const response = await fetch(`${AI_BACKEND_URL}/api/ai/chat`, {
+  const response = await requestAI('/api/ai/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
