@@ -24,7 +24,7 @@ async function requestAI(path, options) {
   try {
     return await fetch(url, options);
   } catch {
-    throw new Error('تعذر الاتصال بخادم الذكاء الاصطناعي المحلي. شغل Backend بالأمر: npm run server');
+    throw new Error('تعذر الاتصال بخادم الذكاء الاصطناعي. شغل Backend بالأمر: npm run server');
   }
 }
 

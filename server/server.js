@@ -6,12 +6,17 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
-const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/$/, '');
-const AI_MODEL = process.env.AI_MODEL || 'gemma4:e2b';
+const AI_PROVIDER = process.env.AI_PROVIDER || 'openrouter';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
+const OPENROUTER_URL = process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = process.env.AI_MODEL || 'nousresearch/hermes-3-llama-3.1-405b';
+const OPENROUTER_REFERER = process.env.OPENROUTER_HTTP_REFERER || process.env.FRONTEND_URL || 'http://localhost:3000';
+const OPENROUTER_TITLE = process.env.OPENROUTER_APP_TITLE || 'Dajaj Ydbah Slaughterhouse App';
 const MESSAGE_LIMIT = 2000;
 const HISTORY_LIMIT = 10;
-const REQUEST_TIMEOUT_MS = 60000;
+const REQUEST_TIMEOUT_MS = 90000;
 const CONTEXT_LIMIT = 18000;
+const RAW_CONTEXT_LIMIT = 50000;
 
 const SYSTEM_PROMPT =
   'أنت مساعد ذكي متخصص في إدارة مدبحة دجاج. وظيفتك مساعدة صاحب المدبحة في حساب الربح، الخسارة، المبيعات، تكلفة الدجاج الحي، تكلفة الذبح، العمال، الكهرباء، النقل، المخزون، الفواتير، الزبائن، وتقديم نصائح عملية لتحسين الربح. ستستقبل أيضًا خريطة مختصرة عن صفحات التطبيق وبنية البيانات والحسابات، وملخصات آمنة عن العمليات والعمال والسلف. أجب بالعربية البسيطة أو الدارجة الجزائرية حسب لغة المستخدم. لا تخترع أرقامًا غير موجودة. إذا احتجت بيانات غير موجودة في السياق، قل بوضوح أنها غير متوفرة واطلبها. عندما تعطي حسابات، اشرح العملية خطوة بخطوة وباختصار. لا تقم بتعديل أو حذف بيانات التطبيق، فقط قدّم اقتراحات وتحليلات.';
@@ -73,6 +78,7 @@ app.get('/api/ai/health', (_request, response) => {
   response.json({
     ok: true,
     service: 'dajaj-ydbah-ai-backend',
+    provider: AI_PROVIDER,
     model: AI_MODEL,
   });
 });
@@ -98,49 +104,30 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-function normalizeOllamaModelName(model) {
-  return model?.name || model?.model || '';
-}
-
-async function getOllamaStatus() {
-  try {
-    const response = await fetchWithTimeout(`${OLLAMA_URL}/api/tags`);
-
-    if (!response.ok) {
-      return {
-        online: false,
-        modelInstalled: false,
-        model: AI_MODEL,
-        error: 'Ollama غير مشغل. شغله بالأمر: ollama serve',
-      };
-    }
-
-    const data = await response.json();
-    const models = Array.isArray(data.models) ? data.models : [];
-    const modelInstalled = models.some((model) => normalizeOllamaModelName(model) === AI_MODEL);
-
-    if (!modelInstalled) {
-      return {
-        online: true,
-        modelInstalled: false,
-        model: AI_MODEL,
-        error: `النموذج غير مثبت. ثبته بالأمر: ollama pull ${AI_MODEL}`,
-      };
-    }
-
-    return {
-      online: true,
-      modelInstalled: true,
-      model: AI_MODEL,
-    };
-  } catch {
+function getAIStatus() {
+  if (AI_PROVIDER !== 'openrouter') {
     return {
       online: false,
-      modelInstalled: false,
+      provider: AI_PROVIDER,
       model: AI_MODEL,
-      error: 'Ollama غير مشغل. شغله بالأمر: ollama serve',
+      error: 'مزود الذكاء الاصطناعي غير مدعوم. استعمل AI_PROVIDER=openrouter في server/.env',
     };
   }
+
+  if (!OPENROUTER_API_KEY.trim()) {
+    return {
+      online: false,
+      provider: 'openrouter',
+      model: AI_MODEL,
+      error: 'OpenRouter API Key غير موجود. أضفه في server/.env',
+    };
+  }
+
+  return {
+    online: true,
+    provider: 'openrouter',
+    model: AI_MODEL,
+  };
 }
 
 function sanitizeBusinessContext(context = {}) {
@@ -215,8 +202,30 @@ function buildUserContent(message, businessContext) {
   ].join('\n\n');
 }
 
-app.get('/api/ai/status', async (_request, response) => {
-  const status = await getOllamaStatus();
+function getOpenRouterError(status, data) {
+  const providerMessage = data?.error?.message || data?.message || '';
+
+  if (status === 401 || status === 403) {
+    return 'OpenRouter API Key غير صحيح أو لا يملك صلاحية. تأكد من المفتاح داخل server/.env';
+  }
+
+  if (status === 402 || status === 429) {
+    return 'رصيد OpenRouter انتهى أو تم تجاوز الحد المسموح. راجع حساب OpenRouter ثم حاول مرة أخرى.';
+  }
+
+  if (status === 404) {
+    return `النموذج ${AI_MODEL} غير متاح في OpenRouter. جرّب النسخة المجانية بإضافة :free إذا كانت متاحة.`;
+  }
+
+  if (status >= 500) {
+    return 'خدمة OpenRouter تواجه مشكلة مؤقتة. حاول مرة أخرى بعد قليل.';
+  }
+
+  return providerMessage || 'تعذر الحصول على رد من OpenRouter. تحقق من الإعدادات وحاول مرة أخرى.';
+}
+
+app.get('/api/ai/status', (_request, response) => {
+  const status = getAIStatus();
   response.status(status.online ? 200 : 503).json(status);
 });
 
@@ -231,13 +240,15 @@ app.post('/api/ai/chat', async (request, response) => {
     return jsonError(response, 400, `السؤال طويل جدًا. الحد الأقصى هو ${MESSAGE_LIMIT} حرف.`);
   }
 
-  const status = await getOllamaStatus();
+  const rawContextSize = JSON.stringify(businessContext).length;
 
-  if (!status.online) {
-    return jsonError(response, 503, status.error, status);
+  if (rawContextSize > RAW_CONTEXT_LIMIT) {
+    return jsonError(response, 400, 'ملخص بيانات التطبيق كبير جدًا. أرسل ملخصًا أصغر بدل قاعدة البيانات كاملة.');
   }
 
-  if (!status.modelInstalled) {
+  const status = getAIStatus();
+
+  if (!status.online) {
     return jsonError(response, 503, status.error, status);
   }
 
@@ -256,27 +267,37 @@ app.post('/api/ai/chat', async (request, response) => {
   ];
 
   try {
-    const ollamaResponse = await fetchWithTimeout(`${OLLAMA_URL}/api/chat`, {
+    const aiResponse = await fetchWithTimeout(OPENROUTER_URL, {
       method: 'POST',
       headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': OPENROUTER_REFERER,
+        'X-Title': OPENROUTER_TITLE,
       },
       body: JSON.stringify({
         model: AI_MODEL,
         messages,
-        stream: false,
+        temperature: 0.3,
       }),
     });
 
-    if (!ollamaResponse.ok) {
-      return jsonError(response, 502, 'تعذر الحصول على رد من Ollama. تأكد من تشغيله ومن تثبيت النموذج.');
+    const data = await aiResponse.json().catch(() => ({}));
+
+    if (!aiResponse.ok) {
+      return jsonError(response, aiResponse.status === 429 ? 429 : 502, getOpenRouterError(aiResponse.status, data), {
+        provider: 'openrouter',
+        model: AI_MODEL,
+      });
     }
 
-    const data = await ollamaResponse.json();
-    const reply = data?.message?.content;
+    const reply = data?.choices?.[0]?.message?.content;
 
     if (!reply) {
-      return jsonError(response, 502, 'وصل رد فارغ من Ollama.');
+      return jsonError(response, 502, 'وصل رد فارغ من OpenRouter.', {
+        provider: 'openrouter',
+        model: AI_MODEL,
+      });
     }
 
     return response.json({ reply });
@@ -286,10 +307,26 @@ app.post('/api/ai/chat', async (request, response) => {
       response,
       503,
       isTimeout
-        ? 'استغرق Ollama وقتًا طويلًا في الرد. حاول مرة أخرى.'
-        : 'Ollama غير مشغل أو لا يمكن الوصول إليه. شغله بالأمر: ollama serve',
+        ? 'استغرق OpenRouter وقتًا طويلًا في الرد. حاول مرة أخرى.'
+        : 'تعذر الاتصال بـ OpenRouter من الخادم. تحقق من الإنترنت وإعدادات server/.env',
+      {
+        provider: 'openrouter',
+        model: AI_MODEL,
+      },
     );
   }
+});
+
+app.use((error, _request, response, next) => {
+  if (error?.type === 'entity.too.large') {
+    return jsonError(response, 413, 'حجم الطلب كبير جدًا. لا ترسل قاعدة البيانات كاملة إلى الذكاء الاصطناعي.');
+  }
+
+  if (error?.message?.includes('غير مسموح')) {
+    return jsonError(response, 403, error.message);
+  }
+
+  return next(error);
 });
 
 app.use((_request, response) => {

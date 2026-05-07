@@ -298,16 +298,18 @@ export default function AIChat() {
       const nextStatus = await checkAIStatus();
       setStatus(nextStatus);
 
-      if (!nextStatus.online || !nextStatus.modelInstalled) {
+      if (!nextStatus.online || nextStatus.modelInstalled === false) {
         setError(nextStatus.error || 'خدمة الذكاء الاصطناعي غير جاهزة.');
       }
     } catch (statusError) {
+      const message = statusError.message || 'تعذر فحص اتصال الذكاء الاصطناعي.';
       setStatus({
         online: false,
-        modelInstalled: false,
-        model: 'gemma4:e2b',
+        provider: 'openrouter',
+        model: 'nousresearch/hermes-3-llama-3.1-405b',
+        error: message,
       });
-      setError(statusError.message || 'تعذر فحص اتصال الذكاء الاصطناعي.');
+      setError(message);
     } finally {
       setStatusLoading(false);
     }
@@ -355,7 +357,7 @@ export default function AIChat() {
         ...current,
         {
           role: 'assistant',
-          content: 'لم أستطع الرد الآن. تأكد أن Ollama يعمل وأن النموذج مثبت.',
+          content: 'لم أستطع الرد الآن. تأكد أن مفتاح OpenRouter مضبوط في الخادم وأن النموذج متاح.',
         },
       ]);
     } finally {
@@ -377,10 +379,9 @@ export default function AIChat() {
     return <LoadingScreen label="جاري تجهيز بيانات الذكاء الاصطناعي..." />;
   }
 
-  const statusText = status?.online
-    ? status.modelInstalled
-      ? `Ollama يعمل والنموذج ${status.model} جاهز`
-      : status.error
+  const isAIReady = Boolean(status?.online && status?.modelInstalled !== false);
+  const statusText = isAIReady
+    ? `OpenRouter يعمل والنموذج ${status.model || 'Nous Hermes'} جاهز`
     : status?.error || 'لم يتم فحص الاتصال بعد';
 
   return (
@@ -389,7 +390,7 @@ export default function AIChat() {
         <div>
           <h3 className="text-2xl font-black">مساعد المدبحة الذكي</h3>
           <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-            محادثة محلية مجانية عبر Backend وسيط ثم Ollama. لا يتم إرسال قاعدة البيانات كاملة.
+            محادثة عبر Backend وسيط ثم OpenRouter. لا يتم إرسال قاعدة البيانات كاملة ولا يظهر المفتاح في الواجهة.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -406,7 +407,7 @@ export default function AIChat() {
 
       <section
         className={`rounded-lg border px-4 py-3 text-sm font-bold ${
-          status?.online && status?.modelInstalled
+          isAIReady
             ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
             : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300'
         }`}
