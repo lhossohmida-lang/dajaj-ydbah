@@ -1,19 +1,7 @@
 function getDefaultAIBackendUrl() {
-  if (import.meta.env.DEV) {
-    return '';
-  }
-
-  if (typeof window === 'undefined') {
-    return 'http://localhost:5000';
-  }
-
-  const { hostname, protocol } = window.location;
-
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return `${protocol}//${hostname}:5000`;
-  }
-
-  return 'http://localhost:5000';
+  // In development, Vite proxies /api/ai to the local Express backend.
+  // In production on Vercel, /api/ai is served by Vercel Functions on the same domain.
+  return '';
 }
 
 const AI_BACKEND_URL = import.meta.env.VITE_AI_BACKEND_URL || getDefaultAIBackendUrl();

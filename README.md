@@ -11,7 +11,7 @@ npm run dev
 
 ## تشغيل الذكاء الاصطناعي
 
-أنشئ ملف `server/.env` من `server/.env.example` وضع مفتاح OpenRouter داخله:
+محليًا: أنشئ ملف `server/.env` من `server/.env.example` وضع مفتاح OpenRouter داخله:
 
 ```env
 PORT=5000
@@ -45,6 +45,8 @@ POST /api/ai/chat
 ```
 
 والـ Backend هو الذي يتصل مع OpenRouter. لا تضع مفتاح OpenRouter داخل `src`.
+
+على Vercel: أضف نفس متغيرات OpenRouter داخل Environment Variables للمشروع. المسارات `/api/ai/status` و`/api/ai/chat` تعمل كـ Vercel Functions، لذلك لا يحتاج الرابط المنشور إلى تشغيل `localhost:5000`.
 
 ## البناء
 
