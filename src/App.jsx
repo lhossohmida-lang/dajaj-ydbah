@@ -6,6 +6,8 @@ import { useAuth } from './hooks/useAuth.jsx';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'));
 const AIChat = lazy(() => import('./pages/AIChat.jsx'));
+const CustomerSlaughterPage = lazy(() => import('./pages/CustomerSlaughterPage.jsx'));
+const CustomersPage = lazy(() => import('./pages/CustomersPage.jsx'));
 const EditSlaughterPage = lazy(() => import('./pages/EditSlaughterPage.jsx'));
 const LoginPage = lazy(() => import('./pages/LoginPage.jsx'));
 const NewSlaughterPage = lazy(() => import('./pages/NewSlaughterPage.jsx'));
@@ -51,6 +53,8 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="ai" element={<AIChat />} />
             <Route path="slaughters/new" element={<NewSlaughterPage />} />
+            <Route path="customer-slaughter" element={<CustomerSlaughterPage />} />
+            <Route path="customers" element={<CustomersPage />} />
             <Route path="slaughters/:id/edit" element={<EditSlaughterPage />} />
             <Route path="records" element={<RecordsPage />} />
             <Route path="reports" element={<ReportsPage />} />
